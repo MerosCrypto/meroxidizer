@@ -5,12 +5,15 @@ pub struct Opts {
     /// The RPC address and port.
     #[structopt(short = "r", long = "rpc", default_value = "localhost:5133")]
     pub rpc: String,
+    /// Token used to access the RPC.
+    #[structopt(short = "t", long = "token")]
+    pub token: String,
     /// The number of threads to use to initialize RandomX.
     /// Only matters on startup and on RandomX key change.
     #[structopt(short = "i", long = "randomx-init-threads")]
     pub randomx_init_threads: u64,
     /// The number of threads to use for RandomX. Must be even.
-    #[structopt(short = "t", long = "randomx-threads")]
+    #[structopt(short = "x", long = "randomx-threads")]
     pub randomx_threads: usize,
     /// The number of threads to use for BLS signing.
     #[structopt(short = "b", long = "bls-threads")]

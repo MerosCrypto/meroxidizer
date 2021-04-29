@@ -44,11 +44,13 @@ const GET_TEMPLATE_INTERVAL: Duration = Duration::from_secs(1);
 const RETAIN_SEQS: usize = 5;
 
 pub fn start(opts: Opts) -> (Arc<RpcInfo>, JoinHandle<()>) {
-    let mut rpc = Rpc::connect(opts.clone());
+    let mut rpc = Rpc {
+        opts: opts.clone()
+    };
     let miner_key = match std::env::var("MEROS_MINER_KEY") {
         Ok(s) => hex::decode(s).expect("Failed to decode MEROS_MINER_KEY env var"),
         Err(std::env::VarError::NotPresent) => {
-            match rpc.single_request::<_, String>("personal_getMiner", [(); 0]) {
+            match rpc.single_request::<_, String>("personal_getMeritHolderKey", serde_json::json!({})) {
                 Ok(miner) => hex::decode(&miner).expect("Failed to decode miner key from RPC"),
                 Err(err) => panic!("Failed to get miner key from RPC: {}", err),
             }
@@ -115,7 +117,10 @@ pub fn start(opts: Opts) -> (Arc<RpcInfo>, JoinHandle<()>) {
                     contents.extend(&nonce.to_le_bytes());
                     // TODO: remove cast once we update our minimum rust version enough
                     contents.extend(&signature as &[u8]);
-                    let params = (template.id, hex::encode_upper(contents));
+                    let params = serde_json::json!({
+                        "id": template.id,
+                        "header": hex::encode_upper(contents)
+                    });
                     debug!("attempting to publish block with params {:?}", params);
                     let res: Result<bool, _> = rpc.single_request("merit_publishBlock", params);
                     match res {

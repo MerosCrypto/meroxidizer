@@ -50,8 +50,9 @@ OPTIONS:
     -i, --randomx-init-threads <randomx-init-threads>
             The number of threads to use to initialize RandomX. Only matters on startup and on RandomX key change
 
-    -t, --randomx-threads <randomx-threads>              The number of threads to use for RandomX. Must be even
+    -x, --randomx-threads <randomx-threads>              The number of threads to use for RandomX. Must be even
     -r, --rpc <rpc>                                      The RPC address and port [default: localhost:5133]
+    -t, --token <token>                                  Token used to access the RPC
 ```
 
 This also accepts the following env variables:
@@ -73,9 +74,10 @@ and merge it into one line.
 RUST_LOG=info # Enable reasonable logging
 cargo run --release -- # Compile and run
 -r localhost:5133 # Connect to the Meros node at localhost:5133
+-t TOKEN # Token from Meros's data directory's .token file
 -b 10 # Use 10 threads for BLS signing
 -i 32 # Use 32 threads to initialize RandomX
--t 26 # Use 26 threads to run RandomX
+-x 26 # Use 26 threads to run RandomX
 -l # Enable RandomX large pages
 -k # Pause mining during RandomX key rotation
 ```

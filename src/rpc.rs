@@ -1,11 +1,10 @@
 use crate::cli::Opts;
 use eyre::Report;
 use log::error;
+use reqwest::blocking::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{de::IoRead, Deserializer};
-use std::{fmt, io, net::TcpStream, time::Duration};
+use std::{fmt, time::Duration};
 
-const CONNECT_BACKOFF: Duration = Duration::from_secs(1);
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
 
 #[derive(Deserialize, Debug)]
@@ -55,35 +54,10 @@ pub struct RpcMiningTarget {
 }
 
 pub struct Rpc {
-    opts: Opts,
-    writer: TcpStream,
-    reader: Deserializer<IoRead<TcpStream>>,
+    pub opts: Opts,
 }
 
 impl Rpc {
-    fn try_connect(opts: Opts) -> Result<Rpc, io::Error> {
-        let stream = TcpStream::connect(&opts.rpc)?;
-        let reader = stream.try_clone()?;
-        let reader = Deserializer::from_reader(reader);
-        Ok(Rpc {
-            writer: stream,
-            reader,
-            opts,
-        })
-    }
-
-    pub fn connect(opts: Opts) -> Rpc {
-        loop {
-            match Self::try_connect(opts.clone()) {
-                Ok(r) => return r,
-                Err(err) => {
-                    error!("error connecting to RPC: {}", err);
-                }
-            }
-            std::thread::sleep(CONNECT_BACKOFF);
-        }
-    }
-
     fn with_retry<F, O>(&mut self, mut f: F) -> O
     where
         F: FnMut(&mut Self) -> Result<O, Report>,
@@ -95,25 +69,30 @@ impl Rpc {
                     error!("error making RPC call: {:#}", err);
                 }
             }
-            *self = Rpc::connect(self.opts.clone());
             std::thread::sleep(RETRY_BACKOFF);
         }
     }
 
-    pub fn single_request<P: Serialize, R: DeserializeOwned>(
+    pub fn single_request<P: Serialize + Clone, R: DeserializeOwned>(
         &mut self,
         method: &str,
         params: P,
     ) -> Result<R, RpcError> {
-        let req = FullRequest {
-            json_rpc: "2.0",
-            method,
-            id: 0,
-            params,
-        };
         self.with_retry(|rpc| {
-            serde_json::to_writer(&mut rpc.writer, &req)?;
-            match FullResponse::<R>::deserialize(&mut rpc.reader)? {
+            let res: FullResponse::<R> = serde_json::from_str(
+                &Client::new()
+                .post(&("http://".to_string() + &rpc.opts.rpc))
+                .bearer_auth(&rpc.opts.token)
+                .json(&FullRequest {
+                    json_rpc: "2.0",
+                    method,
+                    id: 0,
+                    params: params.clone(),
+                })
+                .send()?
+                .text()?
+            )?;
+            match res {
                 FullResponse::Error { error, .. } => Ok(Err(error)),
                 FullResponse::Result { result, .. } => Ok(Ok(result)),
             }
@@ -121,15 +100,21 @@ impl Rpc {
     }
 
     pub fn get_height(&mut self) -> usize {
-        let req = FullRequest {
-            json_rpc: "2.0",
-            method: "merit_getHeight",
-            id: 0,
-            params: [(); 0],
-        };
         self.with_retry(|rpc| {
-            serde_json::to_writer(&mut rpc.writer, &req)?;
-            match FullResponse::deserialize(&mut rpc.reader)? {
+            let res: FullResponse::<usize> = serde_json::from_str(
+                &Client::new()
+                .post(&("http://".to_string() + &rpc.opts.rpc))
+                .bearer_auth(&rpc.opts.token)
+                .json(&FullRequest {
+                    json_rpc: "2.0",
+                    method: "merit_getHeight",
+                    id: 0,
+                    params: serde_json::json!({}),
+                })
+                .send()?
+                .text()?
+            )?;
+            match res {
                 FullResponse::Error { error, .. } => Err(error.into()),
                 FullResponse::Result { result, .. } => Ok(result),
             }
@@ -137,15 +122,21 @@ impl Rpc {
     }
 
     pub fn get_mining_target(&mut self, miner_pubkey: &str) -> RpcMiningTarget {
-        let req = FullRequest {
-            json_rpc: "2.0",
-            id: 1,
-            method: "merit_getBlockTemplate",
-            params: [miner_pubkey],
-        };
         self.with_retry(|rpc| {
-            serde_json::to_writer(&mut rpc.writer, &req)?;
-            match FullResponse::deserialize(&mut rpc.reader)? {
+            let res: FullResponse::<RpcMiningTarget> = serde_json::from_str(
+                &Client::new()
+                .post(&("http://".to_string() + &rpc.opts.rpc))
+                .bearer_auth(&rpc.opts.token)
+                .json(&FullRequest {
+                    json_rpc: "2.0",
+                    method: "merit_getBlockTemplate",
+                    id: 0,
+                    params: serde_json::json!({"miner": miner_pubkey}),
+                })
+                .send()?
+                .text()?
+            )?;
+            match res {
                 FullResponse::Error { error, .. } => Err(error.into()),
                 FullResponse::Result { result, .. } => Ok(result),
             }
